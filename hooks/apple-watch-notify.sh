@@ -18,9 +18,10 @@ PUSHOVER_PRIORITY="${PUSHOVER_PRIORITY:-0}"
 PUSHOVER_SOUND="${PUSHOVER_SOUND:-}"
 PUSHOVER_TIMEOUT="${PUSHOVER_TIMEOUT:-5}"
 
-# Silently skip if disabled, missing creds, or no curl available.
+# Silently skip if disabled, sentinel file present, missing creds, or no curl.
 # Hooks must always exit 0 — never surface errors to Claude Code.
 [ "$PUSHOVER_ENABLED" = "false" ] && exit 0
+[ -e "$CONFIG_DIR/pushover-disabled" ] && exit 0
 [ -z "$PUSHOVER_USER_KEY" ] && exit 0
 [ -z "$PUSHOVER_APP_TOKEN" ] && exit 0
 command -v curl >/dev/null 2>&1 || exit 0

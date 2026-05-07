@@ -54,6 +54,17 @@ cp /path/to/flashy/config.default ~/.config/flashy/config
 | `PUSHOVER_SOUND` | *(empty)* | Pushover [sound name](https://pushover.net/api#sounds); empty = user default |
 | `PUSHOVER_TIMEOUT` | `5` | Max seconds to wait on the Pushover API |
 
+## Pausing Pushover on the fly
+
+The terminal flash always runs, but you can silence the Apple Watch / phone push at any time without editing config:
+
+```bash
+touch ~/.config/flashy/pushover-disabled   # mute pushes
+rm   ~/.config/flashy/pushover-disabled    # unmute
+```
+
+This is the path to mention if you'd like to ask Claude to toggle pushes mid-session — e.g. "mute pushover" / "unmute pushover".
+
 ## Apple Watch / Phone Notifications
 
 Flashy can send a push to your phone (and Apple Watch) on every Stop / Notification event using [Pushover](https://pushover.net) — handy when you've stepped away from the terminal.
