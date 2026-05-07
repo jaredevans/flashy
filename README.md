@@ -2,10 +2,11 @@
 
 Visual terminal flash notifications for Claude Code.
 
-When Claude finishes a turn, is waiting for your input, or detects you've stepped away, Flashy pulses your terminal's background color.
+When Claude finishes a turn, is waiting for your input, or detects you've stepped away, Flashy pulses your terminal's background color — and optionally pings your phone / Apple Watch via [Pushover](https://pushover.net).
 
 - **Stop event** → 1 pulse (subtle "I'm done")
 - **Notification event** → 2 pulses (stronger "come back") — Claude Code decides when to fire this (e.g., after detecting you're idle), so the timing before you see the flash depends on Claude Code, not Flashy
+- **Apple Watch / phone push** (optional) — sent on the same events when Pushover credentials are configured
 
 <p align="center">
   <img src="demo.gif" alt="Flashy demo" width="500">
@@ -43,6 +44,36 @@ cp /path/to/flashy/config.default ~/.config/flashy/config
 | `SHIFT` | `50` | RGB shift intensity (0-255). Higher = more visible |
 | `FALLBACK_COLOR` | `#1a1b26` | Used when auto-detect fails |
 | `BG_COLOR_FILE` | *(empty)* | Per-TTY bg color file pattern. Use `{tty}` placeholder |
+| `PUSHOVER_ENABLED` | `true` | Set `false` to skip Pushover even if creds are set |
+| `PUSHOVER_USER_KEY` | *(empty)* | Your Pushover user key — leave empty to disable pushes |
+| `PUSHOVER_APP_TOKEN` | *(empty)* | Your Pushover application API token |
+| `PUSHOVER_TITLE` | `Claude Code` | Push notification title |
+| `PUSHOVER_STOP_MESSAGE` | `Claude finished a turn` | Body for Stop events |
+| `PUSHOVER_NOTIFICATION_MESSAGE` | `Claude needs your attention` | Body for Notification events |
+| `PUSHOVER_PRIORITY` | `0` | Pushover priority: `-2` (silent) … `0` (default) … `2` (emergency) |
+| `PUSHOVER_SOUND` | *(empty)* | Pushover [sound name](https://pushover.net/api#sounds); empty = user default |
+| `PUSHOVER_TIMEOUT` | `5` | Max seconds to wait on the Pushover API |
+
+## Apple Watch / Phone Notifications
+
+Flashy can send a push to your phone (and Apple Watch) on every Stop / Notification event using [Pushover](https://pushover.net) — handy when you've stepped away from the terminal.
+
+1. Create a Pushover account and install the iOS app (one-time $5 purchase).
+2. From the Pushover dashboard, grab your **User Key** and create an **Application** to get an **API Token**.
+3. Add them to `~/.config/flashy/config`:
+
+   ```bash
+   PUSHOVER_USER_KEY="your-user-key"
+   PUSHOVER_APP_TOKEN="your-app-token"
+   ```
+
+4. Test it:
+
+   ```bash
+   ./hooks/apple-watch-notify.sh stop
+   ```
+
+The script silently no-ops if either key is unset, `curl` is missing, or `PUSHOVER_ENABLED=false` — it never blocks Claude Code. The network call is backgrounded with a `PUSHOVER_TIMEOUT` cap (default 5s).
 
 ## Terminal Compatibility
 
@@ -73,6 +104,17 @@ cp /path/to/flashy/config.default ~/.config/flashy/config
 
 **Double flashes**
 - If you previously had manual Stop/Notification hooks in `~/.claude/settings.json` calling a flash script, remove those entries. Flashy replaces them.
+
+**Pushover notifications never arrive**
+- Confirm both `PUSHOVER_USER_KEY` and `PUSHOVER_APP_TOKEN` are set in `~/.config/flashy/config`.
+- Run `./hooks/apple-watch-notify.sh stop` directly — if it returns instantly with no push, run the curl in the foreground to see the API response:
+  ```bash
+  curl --form-string "token=$PUSHOVER_APP_TOKEN" \
+       --form-string "user=$PUSHOVER_USER_KEY" \
+       --form-string "message=test" \
+       https://api.pushover.net/1/messages.json
+  ```
+- Make sure `curl` is installed and the Pushover iOS app is signed in.
 
 ## How It Works
 

@@ -26,3 +26,25 @@ FALLBACK_COLOR="#1a1b26"
 # Use {tty} as placeholder for the TTY name (e.g., ttys002).
 # Example: ~/.terminal-bg-color.{tty}
 BG_COLOR_FILE=""
+
+# --- Apple Watch / Pushover notifications ---
+# Sends a push (phone + Apple Watch) via https://pushover.net on each event.
+# Leave PUSHOVER_USER_KEY or PUSHOVER_APP_TOKEN empty to disable.
+
+PUSHOVER_ENABLED=true
+PUSHOVER_USER_KEY=""
+PUSHOVER_APP_TOKEN=""
+
+# Notification text
+PUSHOVER_TITLE="Claude Code"
+PUSHOVER_STOP_MESSAGE="Claude finished a turn"
+PUSHOVER_NOTIFICATION_MESSAGE="Claude needs your attention"
+
+# Pushover priority: -2 (silent) … 0 (default) … 2 (emergency)
+PUSHOVER_PRIORITY=0
+
+# Optional sound name (see https://pushover.net/api#sounds). Empty = user default.
+PUSHOVER_SOUND=""
+
+# Max seconds to wait on the Pushover API before giving up
+PUSHOVER_TIMEOUT=5
