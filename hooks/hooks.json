@@ -15,8 +15,23 @@
         ]
       }
     ],
+    "StopFailure": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/flash.sh\" error"
+          },
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/apple-watch-notify.sh\" error"
+          }
+        ]
+      }
+    ],
     "Notification": [
       {
+        "matcher": "permission_prompt|idle_prompt|elicitation_dialog|agent_needs_input|agent_completed",
         "hooks": [
           {
             "type": "command",
@@ -25,6 +40,35 @@
           {
             "type": "command",
             "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/apple-watch-notify.sh\" notification"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "AskUserQuestion|ExitPlanMode",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/flash.sh\" waiting"
+          },
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/apple-watch-notify.sh\" waiting"
+          }
+        ]
+      }
+    ],
+    "TeammateIdle": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/flash.sh\" idle"
+          },
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/apple-watch-notify.sh\" idle"
           }
         ]
       }

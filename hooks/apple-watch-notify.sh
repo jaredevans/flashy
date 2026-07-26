@@ -14,6 +14,12 @@ PUSHOVER_APP_TOKEN="${PUSHOVER_APP_TOKEN:-}"
 PUSHOVER_TITLE="${PUSHOVER_TITLE:-Claude Code}"
 PUSHOVER_STOP_MESSAGE="${PUSHOVER_STOP_MESSAGE:-Claude finished a turn}"
 PUSHOVER_NOTIFICATION_MESSAGE="${PUSHOVER_NOTIFICATION_MESSAGE:-Claude needs your attention}"
+PUSHOVER_WAITING_MESSAGE="${PUSHOVER_WAITING_MESSAGE:-Claude is waiting for your input}"
+# NB: no apostrophes in these defaults — bash treats a single quote inside
+# ${VAR:-word} as a quote opener even within double quotes, and the script
+# fails to parse.
+PUSHOVER_ERROR_MESSAGE="${PUSHOVER_ERROR_MESSAGE:-Claude hit an error and stopped}"
+PUSHOVER_IDLE_MESSAGE="${PUSHOVER_IDLE_MESSAGE:-A Claude teammate went idle}"
 PUSHOVER_PRIORITY="${PUSHOVER_PRIORITY:-0}"
 PUSHOVER_SOUND="${PUSHOVER_SOUND:-}"
 PUSHOVER_TIMEOUT="${PUSHOVER_TIMEOUT:-5}"
@@ -27,9 +33,13 @@ PUSHOVER_TIMEOUT="${PUSHOVER_TIMEOUT:-5}"
 command -v curl >/dev/null 2>&1 || exit 0
 
 # --- Resolve message from event name ---
+# Labels match flash.sh; see hooks.json for the event → label mapping.
 case "$1" in
   stop)         MESSAGE="$PUSHOVER_STOP_MESSAGE" ;;
   notification) MESSAGE="$PUSHOVER_NOTIFICATION_MESSAGE" ;;
+  waiting)      MESSAGE="$PUSHOVER_WAITING_MESSAGE" ;;
+  error)        MESSAGE="$PUSHOVER_ERROR_MESSAGE" ;;
+  idle)         MESSAGE="$PUSHOVER_IDLE_MESSAGE" ;;
   *)            MESSAGE="${1:-Claude Code event}" ;;
 esac
 

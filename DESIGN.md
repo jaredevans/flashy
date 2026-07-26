@@ -12,10 +12,19 @@ Flashy is a Claude Code plugin that provides visual terminal flash notifications
 
 ## How It Works
 
-The plugin registers two Claude Code hooks:
+The plugin registers every Claude Code hook event that means "Claude is done, or Claude is blocked on you":
 
-- **Stop** — fires every time Claude finishes a turn. Default: 1 pulse.
-- **Notification** — fires when Claude's idle detection thinks you've stepped away. Default: 2 pulses.
+| Hook event | Matcher | Label (`$1`) | Default pulses |
+|------------|---------|--------------|:--------------:|
+| `Stop` | — | `stop` | 1 |
+| `StopFailure` | — | `error` | 3 |
+| `Notification` | `permission_prompt`, `idle_prompt`, `elicitation_dialog`, `agent_needs_input`, `agent_completed` | `notification` | 2 |
+| `PreToolUse` | `AskUserQuestion`, `ExitPlanMode` | `waiting` | 2 |
+| `TeammateIdle` | — | `idle` | 2 |
+
+`PermissionRequest` and `Elicitation` are deliberately **not** hooked: they fire for the same moments as `Notification:permission_prompt` and `Notification:elicitation_dialog`, so hooking both would double-notify. The `Notification` lane is the single source of truth for those two.
+
+The `Notification` matcher also excludes `auth_success`, `elicitation_complete`, and `elicitation_response` — those are informational, not "Claude is waiting."
 
 Each pulse changes the terminal background color briefly (via OSC 11 escape sequence), then restores the original color. The flash color is computed adaptively: dark themes get a lighter flash, light themes get a darker flash.
 
@@ -26,8 +35,9 @@ Each pulse changes the terminal background color briefly (via OSC 11 escape sequ
 ├── .claude-plugin/
 │   └── plugin.json              # Plugin metadata
 ├── hooks/
-│   ├── hooks.json               # Hook event definitions (Stop + Notification)
-│   └── flash.sh                 # Core flash script
+│   ├── hooks.json               # Hook event definitions (see table above)
+│   ├── flash.sh                 # Core flash script
+│   └── apple-watch-notify.sh    # Optional Pushover push (phone + Apple Watch)
 ├── config.default               # Documented default config (reference only)
 ├── README.md                    # Install, config reference, troubleshooting
 └── LICENSE                      # MIT
@@ -42,8 +52,8 @@ No skills, no MCP servers, no external dependencies. Just hooks and one bash scr
 ```json
 {
   "name": "flashy",
-  "description": "Visual terminal flash notifications for Claude Code — pulses your terminal background on Stop and Notification events",
-  "version": "0.1.0",
+  "description": "Visual terminal flash notifications for Claude Code — pulses your terminal background whenever Claude finishes a turn or is waiting on you",
+  "version": "0.2.0",
   "author": {
     "name": "Adam Stone"
   },
@@ -53,29 +63,25 @@ No skills, no MCP servers, no external dependencies. Just hooks and one bash scr
 
 ## Hook Wiring
 
-`hooks/hooks.json`:
+`hooks/hooks.json` registers both scripts under each event. Abbreviated — see the file for all five blocks:
 
 ```json
 {
-  "description": "Visual terminal flash notifications for Claude Code",
   "hooks": {
     "Stop": [
       {
         "hooks": [
-          {
-            "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/flash.sh\" stop"
-          }
+          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/flash.sh\" stop" },
+          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/apple-watch-notify.sh\" stop" }
         ]
       }
     ],
-    "Notification": [
+    "PreToolUse": [
       {
+        "matcher": "AskUserQuestion|ExitPlanMode",
         "hooks": [
-          {
-            "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/flash.sh\" notification"
-          }
+          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/flash.sh\" waiting" },
+          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/apple-watch-notify.sh\" waiting" }
         ]
       }
     ]
@@ -83,7 +89,9 @@ No skills, no MCP servers, no external dependencies. Just hooks and one bash scr
 }
 ```
 
-The script receives the event name as `$1` and looks up the corresponding pulse count from config. This keeps all user-facing tunables in the config file rather than in hook definitions.
+Each script receives a **label** as `$1` — not the raw hook event name — and looks up the corresponding pulse count or push message from config. The indirection matters: several distinct hook events collapse to one label's worth of user-facing behavior, and it keeps all tunables in the config file rather than in hook definitions. Adding an event means adding a `hooks.json` block, not touching the scripts.
+
+Both scripts are attached to every event. The flash always runs; only the push is suppressible (via `PUSHOVER_ENABLED` or the `pushover-disabled` sentinel).
 
 ## Configuration
 
@@ -209,9 +217,25 @@ for each pulse:
 
 Script must `exit 0` explicitly — without it, the `[` test on the last loop iteration can return exit code 1, causing Claude Code to report a hook error.
 
+## Terminal Resolution (`/dev/tty` is not available in hooks)
+
+**Claude Code runs hooks detached from the controlling terminal.** Opening `/dev/tty` from a hook subprocess fails with `Device not configured`, even though the parent Claude Code process is attached to a real TTY (e.g. `ttys000`) and that device is writable by the child.
+
+This was originally silent and total: every write in `flash.sh` was `printf … > /dev/tty 2>/dev/null`, so the failed open was swallowed and the script exited 0 having drawn nothing. The push notification still fired, which made it look like a rendering or terminal-compatibility problem rather than a plumbing one.
+
+`resolve_tty()` therefore cascades:
+
+1. `/dev/tty` if it opens — direct shell invocation, and we own the terminal
+2. `/dev/$(ps -p $PPID -o tty=)` — the parent's device, the Claude Code hook case
+3. Neither → no terminal to draw on, exit 0 silently (piped context, CI)
+
+It also records `OWN_TTY`, which gates the OSC 11 *query* below. Writing to a terminal we don't own is safe; **reading from one is not** — a `read` on the parent's TTY races the Claude Code TUI for the user's keystrokes. So auto-detect is disabled in the hook path by design, not by accident, and `FALLBACK_COLOR` becomes the effective background source whenever Flashy runs under Claude Code. That makes `FALLBACK_COLOR` a setting users must actually set, not a last resort.
+
+Diagnosing this class of failure requires distinguishing "hook never fired" from "hook fired, wrote nothing." That is what `FLASHY_DEBUG` exists for; the log records the resolved device per invocation.
+
 ## Background Color Auto-Detection (OSC 11 Query)
 
-This is the one piece of new logic vs. the existing `flash-terminal.sh`. The technique:
+Only runs when `OWN_TTY=1` — see above. This is the one piece of new logic vs. the existing `flash-terminal.sh`. The technique:
 
 ```sh
 # Send OSC 11 query and read response with timeout
@@ -299,4 +323,19 @@ Users on unsupported terminals set `FALLBACK_COLOR` in their config.
 
 ## Migration Note
 
-If you previously had manual Stop/Notification hooks in `~/.claude/settings.json` calling a flash script (e.g., `flash-terminal.sh`), remove those entries after installing Flashy — otherwise both will fire and you'll get double flashes. Flashy coexists fine with other plugins that use Stop/Notification hooks for different purposes (e.g., sound notifications).
+If you previously had manual Stop/Notification hooks in `~/.claude/settings.json` calling a flash script (e.g., `flash-terminal.sh`), remove those entries after installing Flashy — otherwise both will fire and you'll get double flashes. Flashy coexists fine with other plugins that use these hooks for different purposes (e.g., sound notifications).
+
+Some overlaps are internal to Flashy, because whether both events fire is up to Claude Code.
+
+**Measured** (Claude Code 2.1.220, two independent reproductions):
+
+```
+18:04:56 [waiting]       PreToolUse:AskUserQuestion
+18:05:02 [notification]  Notification, same AskUserQuestion — ~6s later
+```
+
+So every `AskUserQuestion` produces two flashes and two Pushover pushes.
+
+**Suspected but unverified:** plan approval emitting both `PreToolUse:ExitPlanMode` and `Notification:permission_prompt`; an API-error turn end emitting both `StopFailure` and `Stop`.
+
+The overlap is left in deliberately — missing a "Claude is blocked" signal is worse than a double pulse, and de-duplicating would mean cross-process state between two independent hook invocations. A user who disagrees deletes the block they care less about.

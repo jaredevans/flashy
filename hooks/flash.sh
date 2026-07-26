@@ -9,8 +9,26 @@ CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/flashy"
 [ -f "$CONFIG_DIR/config" ] && . "$CONFIG_DIR/config"
 
 ENABLED="${ENABLED:-true}"
+FLASHY_DEBUG="${FLASHY_DEBUG:-false}"
+
+# Debug log — set FLASHY_DEBUG=true in config to trace hook firing.
+# Records that the script ran at all, which is the only way to tell a
+# non-firing hook from a firing hook whose escape sequence went nowhere.
+debug_log() {
+  [ "$FLASHY_DEBUG" = "true" ] || return 0
+  printf '%s [%s] %s\n' "$(date '+%H:%M:%S')" "${1:-?}" "$2" >> "$CONFIG_DIR/debug.log" 2>/dev/null
+}
+
+# Guarded, not just handed to debug_log: bash expands arguments before the
+# callee can return early, so an unguarded call would run ps on every event.
+if [ "$FLASHY_DEBUG" = "true" ]; then
+  debug_log "$1" "invoked pid=$$ ppid=$PPID ptty=$(ps -p $PPID -o tty= 2>/dev/null | tr -d ' ') open_devtty=$( ( : > /dev/tty ) 2>/dev/null && echo OK || echo FAIL)"
+fi
 STOP_PULSES="${STOP_PULSES:-1}"
 NOTIFICATION_PULSES="${NOTIFICATION_PULSES:-2}"
+WAITING_PULSES="${WAITING_PULSES:-2}"
+ERROR_PULSES="${ERROR_PULSES:-3}"
+IDLE_PULSES="${IDLE_PULSES:-2}"
 PULSE_DURATION="${PULSE_DURATION:-0.22}"
 PULSE_GAP="${PULSE_GAP:-0.1}"
 SHIFT="${SHIFT:-50}"
@@ -21,11 +39,51 @@ BG_COLOR_FILE="${BG_COLOR_FILE:-}"
 [ "$ENABLED" = "false" ] && exit 0
 
 # --- Resolve pulse count from event name ---
+# Labels are assigned in hooks.json, not taken from the hook event name:
+#   stop         Stop
+#   error        StopFailure
+#   notification Notification (permission/idle/elicitation/agent types)
+#   waiting      PreToolUse for AskUserQuestion and ExitPlanMode
+#   idle         TeammateIdle
 case "$1" in
   stop)         COUNT="$STOP_PULSES" ;;
   notification) COUNT="$NOTIFICATION_PULSES" ;;
+  waiting)      COUNT="$WAITING_PULSES" ;;
+  error)        COUNT="$ERROR_PULSES" ;;
+  idle)         COUNT="$IDLE_PULSES" ;;
   *)            COUNT=1 ;;
 esac
+
+# --- Resolve a terminal to draw on ---
+# Claude Code runs hooks detached from the controlling terminal, so /dev/tty
+# cannot be opened even though the parent process has one. Writing there fails
+# silently and nothing ever reaches the terminal. Fall back to the parent's
+# TTY device, which is writable from the detached child.
+# Also reports whether we own the terminal (OWN_TTY=1) or borrowed the
+# parent's (OWN_TTY=0). That distinction gates the OSC 11 *query*: reading a
+# response from a terminal we don't control would race the Claude Code TUI for
+# the user's keystrokes. Writing is safe either way; reading is not.
+OWN_TTY=0
+resolve_tty() {
+  ( : > /dev/tty ) 2>/dev/null && { OWN_TTY=1; printf '/dev/tty'; return 0; }
+  local name
+  name=$(ps -p $PPID -o tty= 2>/dev/null | tr -d ' ')
+  case "$name" in ''|'??'|'?') return 1 ;; esac
+  ( : > "/dev/$name" ) 2>/dev/null && { printf '/dev/%s' "$name"; return 0; }
+  return 1
+}
+
+# Command substitution runs resolve_tty in a subshell, so the OWN_TTY it sets
+# is discarded — re-derive it here from the device that came back.
+if TTY_DEV=$(resolve_tty); then
+  [ "$TTY_DEV" = "/dev/tty" ] && OWN_TTY=1
+else
+  TTY_DEV=""
+fi
+debug_log "$1" "tty_dev=${TTY_DEV:-NONE}"
+
+# No writable terminal (piped context, CI, detached session) — nothing to draw.
+[ -z "$TTY_DEV" ] && exit 0
 
 # --- Background color detection (three-tier) ---
 
@@ -49,10 +107,12 @@ detect_from_file() {
 # are best-effort. Fails silently → falls through to Tier 3.
 detect_from_osc11() {
   local response=""
+  # Only safe when we own the terminal — see resolve_tty().
+  [ "$OWN_TTY" = "1" ] || return 1
   # Redirect stdin from terminal for reading the response
-  exec < /dev/tty 2>/dev/null || return 1
+  exec < "$TTY_DEV" 2>/dev/null || return 1
   # Send the query
-  printf '\033]11;?\a' > /dev/tty 2>/dev/null
+  printf '\033]11;?\a' > "$TTY_DEV" 2>/dev/null
   # Read with short timeout — terminal may not respond
   read -t 0.1 -r response 2>/dev/null || return 1
 
@@ -104,13 +164,15 @@ fi
 # Format as #RRGGBB
 FLASH_COLOR=$(printf '#%02x%02x%02x' "$fr" "$fg" "$fb")
 
+debug_log "$1" "count=$COUNT bg=$BG_COLOR flash=$FLASH_COLOR"
+
 # --- Pulse loop ---
 for (( i = 0; i < COUNT; i++ )); do
   # Set terminal bg to flash color
-  printf '\033]11;%s\a' "$FLASH_COLOR" > /dev/tty 2>/dev/null
+  printf '\033]11;%s\a' "$FLASH_COLOR" > "$TTY_DEV" 2>/dev/null
   sleep "$PULSE_DURATION"
   # Restore original bg
-  printf '\033]11;%s\a' "$BG_COLOR" > /dev/tty 2>/dev/null
+  printf '\033]11;%s\a' "$BG_COLOR" > "$TTY_DEV" 2>/dev/null
   # Gap between pulses (skip after last)
   if (( i < COUNT - 1 )); then
     sleep "$PULSE_GAP"

@@ -6,8 +6,11 @@
 ENABLED=true
 
 # Pulses per event type
-STOP_PULSES=1
-NOTIFICATION_PULSES=2
+STOP_PULSES=1           # Claude finished a turn
+NOTIFICATION_PULSES=2   # permission prompt, idle prompt, MCP elicitation, agent needs input
+WAITING_PULSES=2        # blocking on AskUserQuestion / plan approval
+ERROR_PULSES=3          # turn ended on an API error (rate limit, overload, …)
+IDLE_PULSES=2           # an agent-team teammate went idle
 
 # Timing (seconds)
 PULSE_DURATION=0.22
@@ -17,8 +20,11 @@ PULSE_GAP=0.1
 # Higher = more visible flash. Lower = subtler.
 SHIFT=50
 
-# Fallback background color (used when auto-detect fails and no file found)
-# Set this to your terminal's background color if flashes look wrong.
+# Fallback background color — SET THIS. Inside Claude Code it is not a
+# fallback but the primary source: OSC 11 auto-detect cannot run from a hook
+# (see README "How It Works"), so this is the color your background is
+# restored to after every pulse. If it does not match your terminal's real
+# background, each flash will leave your background subtly wrong.
 FALLBACK_COLOR="#1a1b26"
 
 # Background color file pattern (advanced — for multi-theme setups)
@@ -39,6 +45,9 @@ PUSHOVER_APP_TOKEN=""
 PUSHOVER_TITLE="Claude Code"
 PUSHOVER_STOP_MESSAGE="Claude finished a turn"
 PUSHOVER_NOTIFICATION_MESSAGE="Claude needs your attention"
+PUSHOVER_WAITING_MESSAGE="Claude is waiting for your input"
+PUSHOVER_ERROR_MESSAGE="Claude hit an error and stopped"
+PUSHOVER_IDLE_MESSAGE="A Claude teammate went idle"
 
 # Pushover priority: -2 (silent) … 0 (default) … 2 (emergency)
 PUSHOVER_PRIORITY=0
@@ -48,3 +57,10 @@ PUSHOVER_SOUND=""
 
 # Max seconds to wait on the Pushover API before giving up
 PUSHOVER_TIMEOUT=5
+
+# --- Debugging ---
+# Set true to trace hook firing to ~/.config/flashy/debug.log — records which
+# events fired, which terminal device was resolved, and the computed colors.
+# The fastest way to tell "the hook never fired" from "the hook fired but the
+# escape sequence went nowhere."
+FLASHY_DEBUG=false

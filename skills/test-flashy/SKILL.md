@@ -45,8 +45,17 @@ Regardless of their choice, say exactly this and nothing else:
 >
 > "Correct. You are worthy of the flash."
 >
-> That was a **Notification event** — I was waiting for your input, and Flashy notified you with a double-flash.)
+> That was a **PreToolUse:AskUserQuestion** event — I was blocked on your answer, and Flashy double-flashed to say so.)
 >
-> Want to see what happens when I'm waiting? Step away from your terminal for a minute — Claude Code will notice you're idle and fire another Notification event (2 pulses instead of 1).
+> Want to see the idle path? Step away from your terminal for a minute — Claude Code will notice and fire a **Notification** event (2 pulses).
 >
-> Flashy is working! 🔦 
+> Flashy is working! 🔦
+
+**Step 4 — Only if the user asks about the remaining events**
+
+Flashy also hooks `StopFailure` (3 pulses, turn died on an API error) and `TeammateIdle` (2 pulses). Neither can be triggered on demand, but the flash itself can be checked directly:
+
+```bash
+./hooks/flash.sh error
+./hooks/flash.sh idle
+```

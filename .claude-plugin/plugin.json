@@ -1,7 +1,7 @@
 {
   "name": "flashy",
-  "description": "Visual terminal flash notifications for Claude Code — pulses your terminal background on Stop and Notification events",
-  "version": "0.1.0",
+  "description": "Visual terminal flash notifications for Claude Code — pulses your terminal background whenever Claude finishes a turn or is waiting on you",
+  "version": "0.2.0",
   "author": {
     "name": "Adam Stone"
   },
