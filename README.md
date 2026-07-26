@@ -8,7 +8,6 @@ When Claude finishes a turn, is waiting for your input, or detects you've steppe
 |------------|---------|:------:|
 | `Stop` | Claude finished a turn | 1 |
 | `Notification` (`permission_prompt`, `idle_prompt`, `elicitation_dialog`, `agent_needs_input`, `agent_completed`) | Claude wants you — approval, idle nudge, MCP input form, subagent update | 2 |
-| `PreToolUse` (`AskUserQuestion`, `ExitPlanMode`) | Claude is blocked on a question or plan approval | 2 |
 | `TeammateIdle` | An agent-team teammate went idle | 2 |
 | `StopFailure` | The turn died on an API error (rate limit, overload) | 3 |
 
@@ -47,7 +46,7 @@ cp /path/to/flashy/config.default ~/.config/flashy/config
 | `ENABLED` | `true` | Set `false` to disable without uninstalling |
 | `STOP_PULSES` | `1` | Pulse count for Stop events |
 | `NOTIFICATION_PULSES` | `2` | Pulse count for Notification events |
-| `WAITING_PULSES` | `2` | Pulse count when blocked on a question / plan approval |
+| `WAITING_PULSES` | `2` | Pulse count for the `waiting` label — unused unless you re-add a `PreToolUse` hook |
 | `ERROR_PULSES` | `3` | Pulse count for StopFailure (API error) |
 | `IDLE_PULSES` | `2` | Pulse count for TeammateIdle |
 | `PULSE_DURATION` | `0.22` | Seconds each pulse is visible |
@@ -62,7 +61,7 @@ cp /path/to/flashy/config.default ~/.config/flashy/config
 | `PUSHOVER_TITLE` | `Claude Code` | Push notification title |
 | `PUSHOVER_STOP_MESSAGE` | `Claude finished a turn` | Body for Stop events |
 | `PUSHOVER_NOTIFICATION_MESSAGE` | `Claude needs your attention` | Body for Notification events |
-| `PUSHOVER_WAITING_MESSAGE` | `Claude is waiting for your input` | Body for question / plan-approval blocks |
+| `PUSHOVER_WAITING_MESSAGE` | `Claude is waiting for your input` | Body for the `waiting` label — unused unless you re-add a `PreToolUse` hook |
 | `PUSHOVER_ERROR_MESSAGE` | `Claude hit an error and stopped` | Body for StopFailure events |
 | `PUSHOVER_IDLE_MESSAGE` | `A Claude teammate went idle` | Body for TeammateIdle events |
 | `PUSHOVER_PRIORITY` | `0` | Pushover priority: `-2` (silent) … `0` (default) … `2` (emergency) |
@@ -131,8 +130,8 @@ The script silently no-ops if either key is unset, `curl` is missing, or `PUSHOV
 
 **Double flashes**
 - If you previously had manual Stop/Notification hooks in `~/.claude/settings.json` calling a flash script, remove those entries. Flashy replaces them.
-- **Confirmed:** every `AskUserQuestion` fires twice — `PreToolUse` (`waiting`) when the question appears, then `Notification` (`notification`) a few seconds later. Two flashes and, if Pushover is configured, **two pushes per question.** To get one, drop either the `PreToolUse` block or `agent_needs_input` from the `Notification` matcher in `hooks/hooks.json`.
-- **Unverified, plausible:** plan approval may emit both `PreToolUse:ExitPlanMode` and `Notification:permission_prompt`; an API error may emit both `StopFailure` and `Stop`.
+- Flashy previously hooked `PreToolUse` for `AskUserQuestion`/`ExitPlanMode`, which double-fired: one flash when the question appeared and another ~6s later from `Notification`. That block was removed — questions now notify once, via `Notification` only. To trade the duplicate back for a faster signal, re-add a `PreToolUse` block calling `flash.sh waiting` (the scripts still support the `waiting` label).
+- **Unverified, plausible:** an API error may emit both `StopFailure` and `Stop`.
 
 **Pushover notifications never arrive**
 - Confirm both `PUSHOVER_USER_KEY` and `PUSHOVER_APP_TOKEN` are set in `~/.config/flashy/config`.

@@ -44,21 +44,6 @@
         ]
       }
     ],
-    "PreToolUse": [
-      {
-        "matcher": "AskUserQuestion|ExitPlanMode",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/flash.sh\" waiting"
-          },
-          {
-            "type": "command",
-            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/apple-watch-notify.sh\" waiting"
-          }
-        ]
-      }
-    ],
     "TeammateIdle": [
       {
         "hooks": [

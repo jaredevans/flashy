@@ -19,8 +19,9 @@ The plugin registers every Claude Code hook event that means "Claude is done, or
 | `Stop` | — | `stop` | 1 |
 | `StopFailure` | — | `error` | 3 |
 | `Notification` | `permission_prompt`, `idle_prompt`, `elicitation_dialog`, `agent_needs_input`, `agent_completed` | `notification` | 2 |
-| `PreToolUse` | `AskUserQuestion`, `ExitPlanMode` | `waiting` | 2 |
 | `TeammateIdle` | — | `idle` | 2 |
+
+The scripts still understand a `waiting` label, but no event maps to it by default — see the double-fire note below.
 
 `PermissionRequest` and `Elicitation` are deliberately **not** hooked: they fire for the same moments as `Notification:permission_prompt` and `Notification:elicitation_dialog`, so hooking both would double-notify. The `Notification` lane is the single source of truth for those two.
 
@@ -76,12 +77,12 @@ No skills, no MCP servers, no external dependencies. Just hooks and one bash scr
         ]
       }
     ],
-    "PreToolUse": [
+    "Notification": [
       {
-        "matcher": "AskUserQuestion|ExitPlanMode",
+        "matcher": "permission_prompt|idle_prompt|elicitation_dialog|agent_needs_input|agent_completed",
         "hooks": [
-          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/flash.sh\" waiting" },
-          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/apple-watch-notify.sh\" waiting" }
+          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/flash.sh\" notification" },
+          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/apple-watch-notify.sh\" notification" }
         ]
       }
     ]
@@ -334,8 +335,10 @@ Some overlaps are internal to Flashy, because whether both events fire is up to 
 18:05:02 [notification]  Notification, same AskUserQuestion — ~6s later
 ```
 
-So every `AskUserQuestion` produces two flashes and two Pushover pushes.
+Every `AskUserQuestion` produced two flashes and two Pushover pushes.
 
-**Suspected but unverified:** plan approval emitting both `PreToolUse:ExitPlanMode` and `Notification:permission_prompt`; an API-error turn end emitting both `StopFailure` and `Stop`.
+De-duplicating in code was not an option: the two hook invocations are independent processes with no shared state, so suppression would need a lockfile or timestamp on disk — real complexity for a cosmetic win. The `PreToolUse` block was removed instead. `Notification` covers the same moment ~6s later, and one late notification beats two prompt ones.
 
-The overlap is left in deliberately — missing a "Claude is blocked" signal is worse than a double pulse, and de-duplicating would mean cross-process state between two independent hook invocations. A user who disagrees deletes the block they care less about.
+The cost is `ExitPlanMode`, which the same block covered. Plan approval is assumed to surface as `Notification:permission_prompt` — **unverified**. If plan mode turns out to notify nothing, restore a `PreToolUse` block matched to `ExitPlanMode` alone; that regains coverage without reintroducing the `AskUserQuestion` duplicate.
+
+**Suspected but unverified:** an API-error turn end emitting both `StopFailure` and `Stop`.

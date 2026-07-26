@@ -45,7 +45,7 @@ Regardless of their choice, say exactly this and nothing else:
 >
 > "Correct. You are worthy of the flash."
 >
-> That was a **PreToolUse:AskUserQuestion** event — I was blocked on your answer, and Flashy double-flashed to say so.)
+> That was a **Notification** event — I was blocked on your answer, and Flashy double-flashed a few seconds later to say so.)
 >
 > Want to see the idle path? Step away from your terminal for a minute — Claude Code will notice and fire a **Notification** event (2 pulses).
 >

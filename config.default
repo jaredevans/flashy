@@ -8,7 +8,8 @@ ENABLED=true
 # Pulses per event type
 STOP_PULSES=1           # Claude finished a turn
 NOTIFICATION_PULSES=2   # permission prompt, idle prompt, MCP elicitation, agent needs input
-WAITING_PULSES=2        # blocking on AskUserQuestion / plan approval
+WAITING_PULSES=2        # 'waiting' label — no event maps to it by default;
+                        # re-add a PreToolUse hook in hooks.json to use it
 ERROR_PULSES=3          # turn ended on an API error (rate limit, overload, …)
 IDLE_PULSES=2           # an agent-team teammate went idle
 
