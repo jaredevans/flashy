@@ -56,20 +56,36 @@ esac
 
 # --- Resolve a terminal to draw on ---
 # Claude Code runs hooks detached from the controlling terminal, so /dev/tty
-# cannot be opened even though the parent process has one. Writing there fails
-# silently and nothing ever reaches the terminal. Fall back to the parent's
-# TTY device, which is writable from the detached child.
-# Also reports whether we own the terminal (OWN_TTY=1) or borrowed the
-# parent's (OWN_TTY=0). That distinction gates the OSC 11 *query*: reading a
+# cannot be opened even though an ancestor process has one. Writing there fails
+# silently and nothing ever reaches the terminal. Fall back to the nearest
+# ancestor's TTY device, which is writable from the detached child.
+# The immediate parent is not enough: Claude Code spawns the hook through an
+# intermediate shell that is itself detached, so $PPID reports tty '?' and a
+# one-level lookup gives up while the real terminal sits one hop further up.
+# Climb until an ancestor reports a TTY we can actually open for writing.
+# Also reports whether we own the terminal (OWN_TTY=1) or borrowed an
+# ancestor's (OWN_TTY=0). That distinction gates the OSC 11 *query*: reading a
 # response from a terminal we don't control would race the Claude Code TUI for
 # the user's keystrokes. Writing is safe either way; reading is not.
 OWN_TTY=0
+MAX_TTY_HOPS="${MAX_TTY_HOPS:-10}"
 resolve_tty() {
   ( : > /dev/tty ) 2>/dev/null && { OWN_TTY=1; printf '/dev/tty'; return 0; }
-  local name
-  name=$(ps -p $PPID -o tty= 2>/dev/null | tr -d ' ')
-  case "$name" in ''|'??'|'?') return 1 ;; esac
-  ( : > "/dev/$name" ) 2>/dev/null && { printf '/dev/%s' "$name"; return 0; }
+  local pid=$PPID name next hops=0
+  # Stop at init (pid 1) — a fully orphaned hook has no terminal to find.
+  while [ -n "$pid" ] && [ "$pid" != "0" ] && [ "$pid" != "1" ] && [ "$hops" -lt "$MAX_TTY_HOPS" ]; do
+    name=$(ps -p "$pid" -o tty= 2>/dev/null | tr -d ' ')
+    case "$name" in
+      ''|'??'|'?') ;;
+      *) ( : > "/dev/$name" ) 2>/dev/null && { printf '/dev/%s' "$name"; return 0; } ;;
+    esac
+    next=$(ps -p "$pid" -o ppid= 2>/dev/null | tr -d ' ')
+    # Guard against a self-referential or unreadable parent stalling the loop.
+    [ -z "$next" ] && break
+    [ "$next" = "$pid" ] && break
+    pid="$next"
+    hops=$((hops + 1))
+  done
   return 1
 }
 
