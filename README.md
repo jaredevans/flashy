@@ -21,12 +21,16 @@ Claude Code decides when to fire `Notification`, so the delay before an idle fla
 
 ## Install
 
+This is a fork of [foundinblank/flashy](https://github.com/foundinblank/flashy) — see [Credits](#credits).
+
 ```bash
-claude plugin marketplace add foundinblank/flashy
-claude plugin install flashy@foundinblank/flashy
+claude plugin marketplace add jaredevans/flashy
+claude plugin install flashy@jaredevans/flashy
 ```
 
-Flashy auto-detects your terminal's background color and computes an adaptive flash color. Run `/test-flashy` to test it out.
+Then **set `FALLBACK_COLOR` to your terminal's background color** — that one setting is what makes the flash look right, since background auto-detection can't run inside Claude Code (see [How It Works](#how-it-works)). Flashy computes the flash color adaptively from it: lighter for dark themes, darker for light ones.
+
+Run `/test-flashy` to try it out.
 
 ## Configuration
 
@@ -102,16 +106,18 @@ The script silently no-ops if either key is unset, `curl` is missing, or `PUSHOV
 
 ## Terminal Compatibility
 
-| Terminal | Auto-detect | Flash | Notes |
-|----------|:-----------:|:-----:|-------|
-| Ghostty | ✅ | ✅ | Full support |
+**The auto-detect column applies only when you run `flash.sh` directly from a shell.** Under Claude Code the OSC 11 query is skipped for every terminal in this table, so `FALLBACK_COLOR` is always what gets used — see [How It Works](#how-it-works). The Flash column is the one that matters day to day.
+
+| Terminal | Flash | Auto-detect (direct invocation only) | Notes |
+|----------|:-----:|:------------------------------------:|-------|
+| Ghostty | ✅ | ✅ | Verified: OSC 11 set works with both `BEL` and `ST` terminators |
 | iTerm2 | ✅ | ✅ | Full support |
 | Kitty | ✅ | ✅ | Full support |
 | WezTerm | ✅ | ✅ | Full support |
 | Alacritty | ✅ | ✅ | Full support |
 | foot | ✅ | ✅ | Full support |
-| tmux | ⚠️ | ✅ | Needs `allow-passthrough on` for auto-detect |
-| VS Code | ❌ | ✅ | Set `FALLBACK_COLOR` in config |
+| tmux | ✅ | ⚠️ | Needs `allow-passthrough on` for auto-detect |
+| VS Code | ✅ | ❌ | Set `FALLBACK_COLOR` in config |
 | Terminal.app | ❌ | ❌ | Not supported (no OSC 11) |
 
 ## Troubleshooting
@@ -124,13 +130,20 @@ The script silently no-ops if either key is unset, `curl` is missing, or `PUSHOV
 **Flash color doesn't restore properly**
 - Set `FALLBACK_COLOR` to your terminal's background color, or use `BG_COLOR_FILE` if you have a multi-theme setup.
 
+**I edited `hooks/hooks.json` and nothing changed**
+
+Run `/reload-plugins`. Claude Code takes a snapshot of hook *registration* when a session starts, so adding, removing, or re-matching an event has no effect until you reload or restart. Script *contents* are not snapshotted — edits to `flash.sh` or `apple-watch-notify.sh` take effect on the very next event, which is what makes this asymmetry so confusing to debug.
+
+The reload prints a hook count (`Reloaded: … 13 hooks …`). Each event block contributes two hooks (flash + push), so the count moving by 2 per block you added or removed confirms the new registration took.
+
 **Claude shows a hook error**
 - Verify the script is executable: `chmod +x /path/to/flashy/hooks/flash.sh`
 - Run it manually to check for errors: `./hooks/flash.sh stop`
 
 **Double flashes**
 - If you previously had manual Stop/Notification hooks in `~/.claude/settings.json` calling a flash script, remove those entries. Flashy replaces them.
-- Flashy previously hooked `PreToolUse` for `AskUserQuestion`/`ExitPlanMode`, which double-fired: one flash when the question appeared and another ~6s later from `Notification`. That block was removed — questions now notify once, via `Notification` only. To trade the duplicate back for a faster signal, re-add a `PreToolUse` block calling `flash.sh waiting` (the scripts still support the `waiting` label).
+- Flashy previously hooked `PreToolUse` for `AskUserQuestion`/`ExitPlanMode`. Both were measured double-firing: one flash as the prompt appeared, then another ~6s later from `Notification`. That block was removed, so questions and plan approvals now notify once, via `Notification` only. To trade the duplicate back for a faster signal, re-add a `PreToolUse` block calling `flash.sh waiting` — the scripts still support the `waiting` label.
+- Note that one `Notification` produces `NOTIFICATION_PULSES` pulses (default 2). Two pulses in quick succession are one event, not a duplicate; two flashes seconds apart are two events.
 - **Unverified, plausible:** an API error may emit both `StopFailure` and `Stop`.
 
 **Pushover notifications never arrive**
@@ -157,6 +170,12 @@ The script silently no-ops if either key is unset, `curl` is missing, or `PUSHOV
 6. Pulses: sets bg → flash color, sleeps, restores original bg
 
 Because step 4 lands on `FALLBACK_COLOR` in practice, setting it to your real terminal background is the difference between a clean pulse and a background that drifts to the wrong color.
+
+## Credits
+
+Flashy was created by **Adam Stone** ([foundinblank/flashy](https://github.com/foundinblank/flashy)) — the original plugin, the adaptive luminance-based flash color, the OSC 11 detection cascade, and the design this fork is built on.
+
+This fork adds Pushover notifications for phone and Apple Watch, expands hook coverage beyond `Stop`/`Notification`, and fixes the terminal write path under Claude Code. Install instructions above point here because upstream doesn't carry those changes yet.
 
 ## License
 
