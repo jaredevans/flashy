@@ -25,7 +25,7 @@ This is a fork of [foundinblank/flashy](https://github.com/foundinblank/flashy) 
 
 ```bash
 claude plugin marketplace add jaredevans/flashy
-claude plugin install flashy@jaredevans/flashy
+claude plugin install flashy@flashy
 ```
 
 Then **set `FALLBACK_COLOR` to your terminal's background color** — that one setting is what makes the flash look right, since background auto-detection can't run inside Claude Code (see [How It Works](#how-it-works)). Flashy computes the flash color adaptively from it: lighter for dark themes, darker for light ones.
@@ -160,7 +160,7 @@ The reload prints a hook count (`Reloaded: … 13 hooks …`). Each event block 
 ## How It Works
 
 1. Claude Code fires one of the hook events above; `hooks.json` maps it to a label (`stop`, `notification`, `waiting`, `error`, `idle`) passed as `$1`
-2. `flash.sh` resolves a terminal to draw on. **Claude Code runs hooks detached from the controlling terminal**, so `/dev/tty` cannot be opened; the script falls back to the parent process's TTY device (e.g. `/dev/ttys000`), which is writable from the detached child
+2. `flash.sh` resolves a terminal to draw on. **Claude Code runs hooks detached from the controlling terminal**, so `/dev/tty` cannot be opened; the script walks up the process tree to the nearest ancestor with a writable TTY device (e.g. `/dev/ttys000`). The immediate parent is not enough — Claude Code spawns the hook through an intermediate shell that is itself detached and reports tty `?`, so the real terminal sits one hop further up
 3. `flash.sh` loads config from `~/.config/flashy/config` (if it exists)
 4. Detects your terminal's current background color via:
    - Per-TTY color file (`BG_COLOR_FILE`, if configured)

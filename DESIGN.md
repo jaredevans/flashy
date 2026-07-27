@@ -220,17 +220,19 @@ Script must `exit 0` explicitly — without it, the `[` test on the last loop it
 
 ## Terminal Resolution (`/dev/tty` is not available in hooks)
 
-**Claude Code runs hooks detached from the controlling terminal.** Opening `/dev/tty` from a hook subprocess fails with `Device not configured`, even though the parent Claude Code process is attached to a real TTY (e.g. `ttys000`) and that device is writable by the child.
+**Claude Code runs hooks detached from the controlling terminal.** Opening `/dev/tty` from a hook subprocess fails with `Device not configured`, even though an ancestor Claude Code process is attached to a real TTY (e.g. `ttys000`) and that device is writable by the child.
 
 This was originally silent and total: every write in `flash.sh` was `printf … > /dev/tty 2>/dev/null`, so the failed open was swallowed and the script exited 0 having drawn nothing. The push notification still fired, which made it look like a rendering or terminal-compatibility problem rather than a plumbing one.
 
 `resolve_tty()` therefore cascades:
 
 1. `/dev/tty` if it opens — direct shell invocation, and we own the terminal
-2. `/dev/$(ps -p $PPID -o tty=)` — the parent's device, the Claude Code hook case
+2. The nearest ancestor with a writable TTY — the Claude Code hook case
 3. Neither → no terminal to draw on, exit 0 silently (piped context, CI)
 
-It also records `OWN_TTY`, which gates the OSC 11 *query* below. Writing to a terminal we don't own is safe; **reading from one is not** — a `read` on the parent's TTY races the Claude Code TUI for the user's keystrokes. So auto-detect is disabled in the hook path by design, not by accident, and `FALLBACK_COLOR` becomes the effective background source whenever Flashy runs under Claude Code. That makes `FALLBACK_COLOR` a setting users must actually set, not a last resort.
+Tier 2 must **walk** the process tree, not just read `$PPID`. Claude Code spawns the hook through an intermediate shell that is itself detached, so `ps -p $PPID -o tty=` returns `?` (`??` on BSD) while the terminal sits one hop further up at the `claude` process. A one-level lookup gives up there, leaves `TTY_DEV` empty, and the script exits at the "no writable terminal" guard having drawn nothing — the original bug, and indistinguishable from an unsupported terminal without `FLASHY_DEBUG`. The walk climbs until an ancestor reports a TTY that can actually be opened for writing, bounded by `MAX_TTY_HOPS` (default 10) and stopping at pid 1, with guards against an empty or self-referential parent stalling the loop. Its first iteration is exactly the old `$PPID` check, so the walk is a strict superset: anything that resolved before still resolves identically.
+
+It also records `OWN_TTY`, which gates the OSC 11 *query* below. Writing to a terminal we don't own is safe; **reading from one is not** — a `read` on a borrowed ancestor's TTY races the Claude Code TUI for the user's keystrokes. So auto-detect is disabled in the hook path by design, not by accident, and `FALLBACK_COLOR` becomes the effective background source whenever Flashy runs under Claude Code. That makes `FALLBACK_COLOR` a setting users must actually set, not a last resort.
 
 Diagnosing this class of failure requires distinguishing "hook never fired" from "hook fired, wrote nothing." That is what `FLASHY_DEBUG` exists for; the log records the resolved device per invocation.
 
